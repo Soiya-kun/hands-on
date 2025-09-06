@@ -2,8 +2,10 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { join } from 'path';
 
 interface ApiStackProps extends cdk.StackProps {
   table: dynamodb.ITable;
@@ -16,17 +18,17 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const postFn = new lambda.Function(this, 'PostFormFunction', {
+    const postFn = new NodejsFunction(this, 'PostFormFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromInline(`const {DynamoDBClient,PutItemCommand}=require('@aws-sdk/client-dynamodb');\nconst crypto=require('crypto');\nconst client=new DynamoDBClient({});\nexports.handler=async(event)=>{const body=JSON.parse(event.body||'{}');const id=body.id||crypto.randomUUID();await client.send(new PutItemCommand({TableName:process.env.TABLE_NAME,Item:{id:{S:id},data:{S:JSON.stringify(body)}}}));return{statusCode:200,headers:{'Content-Type':'application/json'},body:JSON.stringify({id})};};`),
+      entry: join(__dirname, '../../../apps/api/src/handlers/postForms.ts'),
+      handler: 'handler',
       environment: { TABLE_NAME: props.table.tableName },
     });
 
-    const getFn = new lambda.Function(this, 'GetFormFunction', {
+    const getFn = new NodejsFunction(this, 'GetFormFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromInline(`const {DynamoDBClient,GetItemCommand}=require('@aws-sdk/client-dynamodb');\nconst client=new DynamoDBClient({});\nexports.handler=async(event)=>{const id=event.pathParameters?.id;const res=await client.send(new GetItemCommand({TableName:process.env.TABLE_NAME,Key:{id:{S:id}}}));return{statusCode:200,headers:{'Content-Type':'application/json'},body:JSON.stringify(res.Item?JSON.parse(res.Item.data.S):null)};};`),
+      entry: join(__dirname, '../../../apps/api/src/handlers/getFormById.ts'),
+      handler: 'handler',
       environment: { TABLE_NAME: props.table.tableName },
     });
 
